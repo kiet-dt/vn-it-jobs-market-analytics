@@ -1,6 +1,6 @@
 import logging
 from pyspark.sql import SparkSession
-from pyspark.sql import functions as F
+# from pyspark.sql import functions as F
 from pyspark.sql.functions import *
 
 from schemas.jobs_schema import create_schema
@@ -42,12 +42,10 @@ def read_kafka_topic(spark_conn, topic):
 
     return spark_df
 
-def parse_df(spark_df,schema):
-    select_expr = spark_df.selectExpr('CAST(value AS STRING)') \
+def parse_df(df_raw,schema):
+    return df_raw.selectExpr('CAST(value AS STRING)') \
                           .select(from_json(col('value'),schema).alias('data')) \
                           .select('data.*')
-
-    return select_expr
 
 def write_to_postgres(batch_df, table):
     batch_df.write \
@@ -63,16 +61,29 @@ def write_to_postgres(batch_df, table):
 if __name__ == "__main__":
     spark_conn = create_spark_connection()
 
-    if spark_conn is not None:
-        df_raw = read_kafka_topic(spark_conn, 'itviec')
+    if spark_conn is None:
+        exit(1)
 
-        df = parse_df(df_raw,create_schema)
+    df_raw = read_kafka_topic(spark_conn, 'itviec')
 
-    jobs_df = df.select("title", "company", "salary", "url", "locations")
+    df = parse_df(df_raw,create_schema)
 
-    companies_df = df.select("company").distinct()
-
-    skill_list = ["Python", "Spark", "Kafka", "SQL", "Hadoop"]
+    skill_list = [
+        "Python", "Java", "C++", "C#", "JavaScript", "TypeScript", "PHP", "Ruby", "Swift", "Kotlin", "Dart", "Scala", "MATLAB",
+        "HTML", "CSS", "Sass", "Less", "Tailwind CSS", "Bootstrap", "React.js","ReactJS", "Vue", "VueJS","Vue.js", "Angular", "Next.js","NextJS", "Nuxt.js", "Redux", "Webpack", "Vite","RESTful API", "API RESTful",
+        "Node.js", "Express", "NestJS", "Django", "Flask", "FastAPI", "Spring", "Spring Boot", ".NET", "ASP.NET", "Laravel", "Ruby on Rails",
+        "SQL", "MySQL", "PostgreSQL", "Oracle", "SQL Server", "MongoDB", "Redis", "Cassandra", "DynamoDB", "Elasticsearch","Rabbit MQ",
+        "Docker", "Kubernetes", "K8s", "CI/CD", "Jenkins", "GitHub Actions", "GitLab CI", "Terraform", "Ansible", "Nginx", "Apache", "AWS", "Azure", "GCP",
+        "Hadoop", "Spark", "PySpark", "Kafka", "Flink", "Airflow", "Hive", "HBase", "Snowflake", "Databricks", "dbt","Playwright",
+        "Pandas", "NumPy", "Scikit-learn", "TensorFlow", "PyTorch", "Keras", "XGBoost", "NLP", "LLM", "OpenCV",
+        "Android", "iOS", "Flutter", "React Native", "Xamarin",
+        "Selenium", "JUnit", "TestNG", "Cypress", "Postman",
+        "OWASP","Cryptography","SIEM", "SOC",
+        "Linux","TCP/IP", "DNS","Firewall","VMware","Bash","Shell Script",
+        "Git", "GitHub", "GitLab","Bitbucket","Jira", "Confluence",
+        "Excel","BI","Tableau","Google Data Studio","Looker","BigQuery","Redshift","Grafana",
+        "Unity"
+        ]
     skill_array_col = array(*[lit(skill) for skill in skill_list])
 
     df = df.withColumn(
@@ -83,13 +94,36 @@ if __name__ == "__main__":
         )
     )
 
-    skills_df = df.select(explode("skills_extracted").alias("skill")).distinct()
 
-    job_skills_df = df.select(
-        "url",
-        explode("skills_extracted").alias("skill")
-    )
+    def process_batch(batch_df, batch_id):
 
-    locations_df = df.select(explode("locations").alias("location")).distinct()
+        print(f"Processing batch {batch_id}")
 
-    location_jobs_df = df.select("url", explode("locations").alias("location")).distinct()
+        jobs_df = batch_df.select("title", "company", "salary", "url", "locations")
+        write_to_postgres(jobs_df, "jobs")
+
+        companies_df = batch_df.select("company").distinct()
+        write_to_postgres(companies_df, "companies")
+
+        skills_df = batch_df.select(explode_outer("skills_extracted").alias("skill")).filter(col("skill").isNotNull())
+        write_to_postgres(skills_df, "skills")
+
+        job_skills_df = batch_df.select(
+            "url",
+            explode_outer("skills_extracted").alias("skill")).filter(col("skill").isNotNull())
+        write_to_postgres(job_skills_df, "job_skills")
+
+        locations_df = batch_df.select(explode_outer("locations").alias("location")).filter(col("location").isNotNull())
+        write_to_postgres(locations_df, "locations")
+
+        location_jobs_df = batch_df.select("url", explode_outer("locations").alias("location")).filter(col("location").isNotNull())
+        write_to_postgres(location_jobs_df, "location_jobs")
+
+
+    query = df.writeStream \
+        .foreachBatch(process_batch) \
+        .outputMode("append") \
+        .option("checkpointLocation", "/tmp/checkpoints/itviec") \
+        .start()
+
+    query.awaitTermination()
