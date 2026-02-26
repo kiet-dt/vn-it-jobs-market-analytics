@@ -16,7 +16,7 @@ class KafkaPipeline:
 
     def process_item(self, item, spider):
         self.producer.send(
-            topic='vn-it-jobs',
+            topic='itviec',
             value=dict(item)
         )
         return item

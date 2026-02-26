@@ -3,7 +3,7 @@ from pyspark.sql import SparkSession
 from pyspark.sql import functions as F
 from pyspark.sql.functions import *
 
-from schemas.jobs_schema import create_jobs_schema
+from schemas.jobs_schema import create_schema
 
 def create_spark_connection():
     spark_conn = None
@@ -64,7 +64,32 @@ if __name__ == "__main__":
     spark_conn = create_spark_connection()
 
     if spark_conn is not None:
-        df_raw = read_kafka_topic(spark_conn, 'vn-it-jobs')
+        df_raw = read_kafka_topic(spark_conn, 'itviec')
 
-        df = parse_df(df_raw,create_jobs_schema)
+        df = parse_df(df_raw,create_schema)
 
+    jobs_df = df.select("title", "company", "salary", "url", "locations")
+
+    companies_df = df.select("company").distinct()
+
+    skill_list = ["Python", "Spark", "Kafka", "SQL", "Hadoop"]
+    skill_array_col = array(*[lit(skill) for skill in skill_list])
+
+    df = df.withColumn(
+        "skills_extracted",
+        filter(
+            skill_array_col,
+            lambda x: col("skills").contains(x)
+        )
+    )
+
+    skills_df = df.select(explode("skills_extracted").alias("skill")).distinct()
+
+    job_skills_df = df.select(
+        "url",
+        explode("skills_extracted").alias("skill")
+    )
+
+    locations_df = df.select(explode("locations").alias("location")).distinct()
+
+    location_jobs_df = df.select("url", explode("locations").alias("location")).distinct()
