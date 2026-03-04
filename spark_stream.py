@@ -31,7 +31,7 @@ def read_kafka_topic(spark_conn, topic):
     try:
         spark_df = spark_conn.readStream \
             .format('kafka') \
-            .option('kafka.bootstrap.servers', 'localhost:9092') \
+            .option('kafka.bootstrap.servers', 'broker:29092') \
             .option('subscribe', topic) \
             .load()
 
@@ -50,7 +50,7 @@ def parse_df(df_raw,schema):
 def write_to_postgres(batch_df, table):
     batch_df.write \
         .format("jdbc") \
-        .option("url", "jdbc:postgresql://localhost:5432/jobdb") \
+        .option("url", "jdbc:postgresql://host.docker.internal:5432/jobdb") \
         .option("dbtable", table) \
         .option("user", "postgres") \
         .option("password", "123456") \
@@ -66,7 +66,7 @@ if __name__ == "__main__":
 
     df_raw = read_kafka_topic(spark_conn, 'itviec')
 
-    df = parse_df(df_raw,create_schema)
+    df = parse_df(df_raw,create_schema())
 
     skill_list = [
         "Python", "Java", "C++", "C#", "JavaScript", "TypeScript", "PHP", "Ruby", "Swift", "Kotlin", "Dart", "Scala", "MATLAB",
@@ -99,25 +99,28 @@ if __name__ == "__main__":
 
         print(f"Processing batch {batch_id}")
 
-        jobs_df = batch_df.select("title", "company", "salary", "url", "locations")
-        write_to_postgres(jobs_df, "jobs")
+        batch_df = batch_df \
+            .withColumn("batch_id", lit(batch_id))
 
-        companies_df = batch_df.select("company").distinct()
-        write_to_postgres(companies_df, "companies")
+        jobs_df = batch_df.select("title", "company", "salary", "url", "locations", "batch_id")
+        write_to_postgres(jobs_df, "staging.jobs")
 
-        skills_df = batch_df.select(explode_outer("skills_extracted").alias("skill")).filter(col("skill").isNotNull())
-        write_to_postgres(skills_df, "skills")
+        companies_df = batch_df.select("company", "batch_id")
+        write_to_postgres(companies_df, "staging.companies")
+
+        skills_df = batch_df.select(explode_outer("skills_extracted").alias("skill"), "batch_id").filter(col("skill").isNotNull())
+        write_to_postgres(skills_df, "staging.skills")
 
         job_skills_df = batch_df.select(
             "url",
-            explode_outer("skills_extracted").alias("skill")).filter(col("skill").isNotNull())
-        write_to_postgres(job_skills_df, "job_skills")
+            explode_outer("skills_extracted").alias("skill"), "batch_id").filter(col("skill").isNotNull())
+        write_to_postgres(job_skills_df, "staging.job_skills")
 
-        locations_df = batch_df.select(explode_outer("locations").alias("location")).filter(col("location").isNotNull())
-        write_to_postgres(locations_df, "locations")
+        locations_df = batch_df.select(explode_outer("locations").alias("location"), "batch_id").filter(col("location").isNotNull())
+        write_to_postgres(locations_df, "staging.locations")
 
-        location_jobs_df = batch_df.select("url", explode_outer("locations").alias("location")).filter(col("location").isNotNull())
-        write_to_postgres(location_jobs_df, "location_jobs")
+        job_locations_df = batch_df.select("url", explode_outer("locations").alias("location"), "batch_id").filter(col("location").isNotNull())
+        write_to_postgres(job_locations_df, "staging.job_locations")
 
 
     query = df.writeStream \
@@ -127,3 +130,4 @@ if __name__ == "__main__":
         .start()
 
     query.awaitTermination()
+
