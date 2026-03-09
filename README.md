@@ -13,10 +13,6 @@ A data pipeline for collecting, streaming, and analyzing IT job listings from th
 
 ![Architecture](images/architecture.png)
 
-## Database Schema
-
-![Database ERD](images/erd.png)
-
 ## Prerequisites
 
 - **Docker** and **Docker Compose**
@@ -36,6 +32,13 @@ vn-it-jobs-market-analytics/
 │           └── itviec_spider.py # ITViec spider
 ├── schemas/
 │   └── jobs_schema.py          # PySpark schema for job JSON
+├── sql/                        # PostgreSQL scripts (create tables, insert, mappings)
+│   ├── 01_create_staging.sql  # Staging schema + tables
+│   ├── 02_create_clean.sql    # Clean schema + tables
+│   ├── 03_insert_staging_to_clean.sql
+│   ├── 04_insert_lookup_levels_roles.sql
+│   ├── 05_insert_job_role_map.sql
+│   └── 06_insert_job_level_map.sql
 ├── spark_stream.py             # Spark Structured Streaming job (Kafka → PostgreSQL)
 ├── docker-compose.yaml        # Kafka, Zookeeper, Schema Registry, Control Center, Spark
 ├── Dockerfile                 # Spark image with Python deps
@@ -59,7 +62,23 @@ This starts:
 - **Spark Master** (UI: 9090, driver: 7077)
 - **Spark Worker**
 
-### 2. Run the crawler
+### 2. Copy JARs to Spark containers
+
+From the project root, copy the contents of the `jars/` folder into the Spark master and worker so they have the Kafka and JDBC connectors:
+
+```bash
+docker cp jars/. spark-master:/opt/spark/jars/
+docker cp jars/. spark-worker:/opt/spark/jars/
+```
+
+To verify the JARs are in place:
+
+```bash
+docker exec -it spark-master ls /opt/spark/jars
+docker exec -it spark-worker ls /opt/spark/jars
+```
+
+### 3. Run the crawler
 
 From the project root, with Kafka running and listening on `localhost:9092`:
 
@@ -70,7 +89,7 @@ scrapy crawl itviec
 
 Scraped items are sent to the Kafka topic `itviec`.
 
-### 3. Run the Spark streaming job
+### 4. Run the Spark streaming job
 
 The Spark job reads from the `itviec` topic, applies the schema, extracts skills, and writes to PostgreSQL. Run it inside the Spark cluster (e.g. submit from the `spark-master` container) or adapt for your Spark deployment. Ensure PostgreSQL is reachable (e.g. `host.docker.internal:5432`) and the database `jobdb` and staging schema/tables exist.
 
@@ -84,6 +103,37 @@ docker exec -it spark-master /opt/spark/bin/spark-submit \
 ```
 
 Adjust paths and master URL to match your setup.
+
+### 5. Set up the database and run SQL scripts
+
+Create the database (e.g. `jobdb`) and run the SQL scripts in `sql/` **in order**. Run **01** and **02** before the Spark job writes data; run **03–06** after you have data in `staging` (e.g. after at least one Spark run).
+
+| Order | File | Description |
+|-------|------|-------------|
+| 1 | `01_create_staging.sql` | Create `staging` schema and tables (jobs, companies, skills, job_skills, locations, job_locations) |
+| 2 | `02_create_clean.sql` | Create `clean` schema and tables (normalized model + job_levels, job_roles, maps) |
+| 3 | `03_insert_staging_to_clean.sql` | Copy data from staging into clean (companies, skills, locations, jobs, job_skills, job_locations) |
+| 4 | `04_insert_lookup_levels_roles.sql` | Seed `clean.job_levels` and `clean.job_roles` |
+| 5 | `05_insert_job_role_map.sql` | Populate job–role mapping from job titles |
+| 6 | `06_insert_job_level_map.sql` | Populate job–level mapping from job titles |
+
+Example (from project root):
+
+```bash
+psql -h host -U postgres -d jobdb -f sql/01_create_staging.sql
+psql -h host -U postgres -d jobdb -f sql/02_create_clean.sql
+# After staging has data:
+psql -h host -U postgres -d jobdb -f sql/03_insert_staging_to_clean.sql
+psql -h host -U postgres -d jobdb -f sql/04_insert_lookup_levels_roles.sql
+psql -h host -U postgres -d jobdb -f sql/05_insert_job_role_map.sql
+psql -h host -U postgres -d jobdb -f sql/06_insert_job_level_map.sql
+```
+
+Replace `host` with your PostgreSQL host (e.g. `localhost` or `host.docker.internal`).
+
+## Database Schema
+
+![Database ERD](images/erd.png)
 
 ## Configuration
 
@@ -101,6 +151,3 @@ Adjust paths and master URL to match your setup.
 | Storage    | PostgreSQL (staging) |
 | Runtime    | Docker, Confluent platform, Apache Spark |
 
-## License
-
-See repository for license information.

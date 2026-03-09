@@ -1,0 +1,475 @@
+CREATE SCHEMA staging;
+
+CREATE TABLE staging.jobs (
+    id BIGSERIAL PRIMARY KEY,
+    title TEXT,
+    company TEXT,
+    salary TEXT,
+    url TEXT,
+    locations TEXT[],          
+    batch_id BIGINT
+);
+
+CREATE TABLE staging.companies (
+    id BIGSERIAL PRIMARY KEY,
+    company TEXT,
+    batch_id BIGINT
+);
+
+CREATE TABLE staging.skills (
+    id BIGSERIAL PRIMARY KEY,
+    skill TEXT,
+    batch_id BIGINT
+);
+
+CREATE TABLE staging.job_skills (
+    id BIGSERIAL PRIMARY KEY,
+    url TEXT,
+    skill TEXT,
+    batch_id BIGINT
+);
+
+CREATE TABLE staging.locations (
+    id BIGSERIAL PRIMARY KEY,
+    location TEXT,
+    batch_id BIGINT
+);
+
+CREATE TABLE staging.location_jobs (
+    id BIGSERIAL PRIMARY KEY,
+    url TEXT,
+    location TEXT,
+    batch_id BIGINT
+);
+-------------------------------------------------------------------------------
+CREATE SCHEMA clean;
+
+CREATE TABLE clean.companies (
+    id SERIAL PRIMARY KEY,
+    name TEXT NOT NULL UNIQUE
+);
+
+CREATE TABLE clean.skills (
+    id SERIAL PRIMARY KEY,
+    name TEXT NOT NULL UNIQUE
+);
+
+CREATE TABLE clean.locations (
+    id SERIAL PRIMARY KEY,
+    name TEXT NOT NULL UNIQUE
+);
+
+CREATE TABLE clean.jobs (
+    id SERIAL PRIMARY KEY,
+    title TEXT,
+    salary TEXT,
+    url TEXT NOT NULL UNIQUE,
+    company_id INTEGER REFERENCES clean.companies(id) ON DELETE SET NULL
+);
+
+CREATE TABLE clean.job_skills (
+    job_id INTEGER REFERENCES clean.jobs(id) ON DELETE CASCADE,
+    skill_id INTEGER REFERENCES clean.skills(id) ON DELETE CASCADE,
+    PRIMARY KEY (job_id, skill_id)
+);
+
+CREATE TABLE clean.job_locations (
+    job_id INTEGER REFERENCES clean.jobs(id) ON DELETE CASCADE,
+    location_id INTEGER REFERENCES clean.locations(id) ON DELETE CASCADE,
+    PRIMARY KEY (job_id, location_id)
+);
+
+CREATE TABLE clean.job_levels (
+    id SERIAL PRIMARY KEY,
+    name TEXT UNIQUE
+);
+
+CREATE TABLE clean.job_roles (
+    id SERIAL PRIMARY KEY,
+    name TEXT UNIQUE
+);
+
+CREATE TABLE clean.job_level_map (
+    job_id INT REFERENCES clean.jobs(id) ON DELETE CASCADE,
+    level_id INT REFERENCES clean.job_levels(id) ON DELETE CASCADE,
+    PRIMARY KEY (job_id, level_id)
+);
+
+CREATE TABLE clean.job_role_map (
+    job_id INT REFERENCES clean.jobs(id) ON DELETE CASCADE,
+    role_id INT REFERENCES clean.job_roles(id) ON DELETE CASCADE,
+    PRIMARY KEY (job_id, role_id)
+);
+-------------------------------------------------------------------------------
+INSERT INTO SCHEMA CLEAN:
+
+INSERT INTO clean.companies (name)
+SELECT DISTINCT company
+FROM staging.companies
+ON CONFLICT (name) DO NOTHING;
+
+INSERT INTO clean.skills (name)
+SELECT DISTINCT skill
+FROM staging.skills
+ON CONFLICT (name) DO NOTHING;
+
+INSERT INTO clean.locations (name)
+SELECT DISTINCT location
+FROM staging.locations
+ON CONFLICT (name) DO NOTHING;
+
+INSERT INTO clean.jobs (title, salary, url, company_id)
+SELECT
+    j.title,
+    j.salary,
+    j.url,
+    c.id
+FROM staging.jobs j
+LEFT JOIN warehouse.companies c
+    ON j.company = c.name
+ON CONFLICT (url) DO NOTHING;
+
+INSERT INTO clean.job_skills (job_id, skill_id)
+SELECT
+    j.id,
+    sk.id
+FROM staging.job_skills js
+JOIN clean.jobs j ON js.url = j.url
+JOIN clean.skills sk ON js.skill = sk.name
+ON CONFLICT DO NOTHING;
+
+INSERT INTO clean.job_locations (job_id, location_id)
+SELECT
+    j.id,
+    l.id
+FROM staging.job_locations jl
+JOIN clean.jobs j ON jl.url = j.url
+JOIN clean.locations l ON jl.location = l.name
+ON CONFLICT DO NOTHING;
+----------------------------------------------------------------------------
+INSERT INTO clean.job_levels (name)
+VALUES
+('Intern'),
+('Fresher'),
+('Junior'),
+('Middle'),
+('Senior'),
+('Lead'),
+('Other')
+ON CONFLICT (name) DO NOTHING;
+
+INSERT INTO clean.job_roles (name)
+VALUES
+('Backend'),
+('Frontend'),
+('Fullstack'),
+('Mobile'),
+('Game'),
+('QA'),
+('QC'),
+('DevOps'),
+('SRE'),
+('Data Engineer'),
+('Data Analyst'),
+('Data Scientist'),
+('AI'),
+('Security'),
+('Cloud'),
+('System'),
+('DBA'),
+('Architect'),
+('Product'),
+('Software'),
+('Consultant'),
+('Business Analyst'),
+('Designer'),
+('Animator'),
+('Blockchain'),
+('Embedded'),
+('BrSE'),
+('Manager'),
+('Other')
+ON CONFLICT (name) DO NOTHING;
+---------------------------------------------------------------------
+INSERT INTO clean.job_role_map (job_id, role_id)
+SELECT j.id, r.id
+FROM clean.jobs j
+JOIN clean.job_roles r ON r.name = 'Backend'
+WHERE lower(j.title) LIKE '%backend%'
+   OR lower(j.title) LIKE '%back-end%'
+   OR lower(j.title) LIKE '%back end%'
+ON CONFLICT DO NOTHING;
+
+INSERT INTO clean.job_role_map (job_id, role_id)
+SELECT j.id, r.id
+FROM clean.jobs j
+JOIN clean.job_roles r ON r.name = 'Frontend'
+WHERE lower(j.title) LIKE '%frontend%'
+   OR lower(j.title) LIKE '%front-end%'
+   OR lower(j.title) LIKE '%front end%'
+ON CONFLICT DO NOTHING;
+
+INSERT INTO clean.job_role_map (job_id, role_id)
+SELECT j.id, r.id
+FROM clean.jobs j
+JOIN clean.job_roles r ON r.name = 'Fullstack'
+WHERE lower(j.title) LIKE '%fullstack%' 
+   OR lower(j.title) LIKE '%full-stack%'
+   OR lower(j.title) LIKE '%full stack%'
+ON CONFLICT DO NOTHING;
+
+INSERT INTO clean.job_role_map (job_id, role_id)
+SELECT j.id, r.id
+FROM clean.jobs j
+JOIN clean.job_roles r ON r.name = 'Mobile'
+WHERE lower(j.title) LIKE '%android%'
+   OR lower(j.title) LIKE '%ios%'
+   OR lower(j.title) LIKE '%mobile%'
+   OR lower(j.title) LIKE '%flutter%'
+   OR lower(j.title) LIKE '%react native%'
+ON CONFLICT DO NOTHING;
+
+INSERT INTO clean.job_role_map (job_id, role_id)
+SELECT j.id, r.id
+FROM clean.jobs j
+JOIN clean.job_roles r ON r.name = 'Game'
+WHERE lower(j.title) LIKE '%game%'
+   OR lower(j.title) LIKE '%unity%'
+ON CONFLICT DO NOTHING;
+
+INSERT INTO clean.job_role_map (job_id, role_id)
+SELECT j.id, r.id
+FROM clean.jobs j
+JOIN clean.job_roles r ON r.name = 'QA'
+WHERE lower(j.title) LIKE '%qa%'
+ON CONFLICT DO NOTHING;
+
+INSERT INTO clean.job_role_map (job_id, role_id)
+SELECT j.id, r.id
+FROM clean.jobs j
+JOIN clean.job_roles r ON r.name = 'QC'
+WHERE lower(j.title) LIKE '%qc%'
+ON CONFLICT DO NOTHING;
+
+INSERT INTO clean.job_role_map (job_id, role_id)
+SELECT j.id, r.id
+FROM clean.jobs j
+JOIN clean.job_roles r ON r.name = 'DevOps'
+WHERE lower(j.title) LIKE '%devops%'
+ON CONFLICT DO NOTHING;
+
+INSERT INTO clean.job_role_map (job_id, role_id)
+SELECT j.id, r.id
+FROM clean.jobs j
+JOIN clean.job_roles r ON r.name = 'SRE'
+WHERE lower(j.title) LIKE '%sre%'
+   OR lower(j.title) LIKE '%site reliability%'
+ON CONFLICT DO NOTHING;
+
+INSERT INTO clean.job_role_map (job_id, role_id)
+SELECT j.id, r.id
+FROM clean.jobs j
+JOIN clean.job_roles r ON r.name = 'Data Engineer'
+WHERE lower(j.title) LIKE '%data engineer%'
+ON CONFLICT DO NOTHING;
+
+INSERT INTO clean.job_role_map (job_id, role_id)
+SELECT j.id, r.id
+FROM clean.jobs j
+JOIN clean.job_roles r ON r.name = 'Data Analyst'
+WHERE lower(j.title) LIKE '%data analyst%'
+ON CONFLICT DO NOTHING;
+
+INSERT INTO clean.job_role_map (job_id, role_id)
+SELECT j.id, r.id
+FROM clean.jobs j
+JOIN clean.job_roles r ON r.name = 'Data Scientist'
+WHERE lower(j.title) LIKE '%data scientist%'
+ON CONFLICT DO NOTHING;
+
+INSERT INTO clean.job_role_map (job_id, role_id)
+SELECT j.id, r.id
+FROM clean.jobs j
+JOIN clean.job_roles r ON r.name = 'AI'
+WHERE j.title LIKE '%AI%'
+ON CONFLICT DO NOTHING;
+
+INSERT INTO clean.job_role_map (job_id, role_id)
+SELECT j.id, r.id
+FROM clean.jobs j
+JOIN clean.job_roles r ON r.name = 'Security'
+WHERE lower(j.title) LIKE '%security%'
+ON CONFLICT DO NOTHING;
+
+INSERT INTO clean.job_role_map (job_id, role_id)
+SELECT j.id, r.id
+FROM clean.jobs j
+JOIN clean.job_roles r ON r.name = 'Cloud'
+WHERE lower(j.title) LIKE '%cloud%'
+ON CONFLICT DO NOTHING;
+
+INSERT INTO clean.job_role_map (job_id, role_id)
+SELECT j.id, r.id
+FROM clean.jobs j
+JOIN clean.job_roles r ON r.name = 'System'
+WHERE lower(j.title) LIKE '%system engineer%'
+   OR lower(j.title) LIKE '%system admin%'
+ON CONFLICT DO NOTHING;
+
+INSERT INTO clean.job_role_map (job_id, role_id)
+SELECT j.id, r.id
+FROM clean.jobs j
+JOIN clean.job_roles r ON r.name = 'DBA'
+WHERE lower(j.title) LIKE '%dba%'
+   OR lower(j.title) LIKE '%database administrator%'
+ON CONFLICT DO NOTHING;
+
+INSERT INTO clean.job_role_map (job_id, role_id)
+SELECT j.id, r.id
+FROM clean.jobs j
+JOIN clean.job_roles r ON r.name = 'Architect'
+WHERE lower(j.title) LIKE '%architect%'
+ON CONFLICT DO NOTHING;
+
+INSERT INTO clean.job_role_map (job_id, role_id)
+SELECT j.id, r.id
+FROM clean.jobs j
+JOIN clean.job_roles r ON r.name = 'Product'
+WHERE lower(j.title) LIKE '%product manager%'
+   OR lower(j.title) LIKE '%product owner%'
+ON CONFLICT DO NOTHING;
+
+INSERT INTO clean.job_role_map (job_id, role_id)
+SELECT j.id, r.id
+FROM clean.jobs j
+JOIN clean.job_roles r ON r.name = 'Software'
+WHERE lower(j.title) LIKE '%software%'
+ON CONFLICT DO NOTHING;
+
+INSERT INTO clean.job_role_map (job_id, role_id)
+SELECT j.id, r.id
+FROM clean.jobs j
+JOIN clean.job_roles r ON r.name = 'Consultant'
+WHERE lower(j.title) LIKE '%consultant%'
+ON CONFLICT DO NOTHING;
+
+INSERT INTO clean.job_role_map (job_id, role_id)
+SELECT j.id, r.id
+FROM clean.jobs j
+JOIN clean.job_roles r ON r.name = 'Business Analyst'
+WHERE lower(j.title) LIKE '%business analyst%'
+ON CONFLICT DO NOTHING;
+
+INSERT INTO clean.job_role_map (job_id, role_id)
+SELECT j.id, r.id
+FROM clean.jobs j
+JOIN clean.job_roles r ON r.name = 'Designer'
+WHERE lower(j.title) LIKE '%designer%'
+ON CONFLICT DO NOTHING;
+
+INSERT INTO clean.job_role_map (job_id, role_id)
+SELECT j.id, r.id
+FROM clean.jobs j
+JOIN clean.job_roles r ON r.name = 'Animator'
+WHERE lower(j.title) LIKE '%animator%'
+ON CONFLICT DO NOTHING;
+
+INSERT INTO clean.job_role_map (job_id, role_id)
+SELECT j.id, r.id
+FROM clean.jobs j
+JOIN clean.job_roles r ON r.name = 'Blockchain'
+WHERE lower(j.title) LIKE '%blockchain%'
+ON CONFLICT DO NOTHING;
+
+INSERT INTO clean.job_role_map (job_id, role_id)
+SELECT j.id, r.id
+FROM clean.jobs j
+JOIN clean.job_roles r ON r.name = 'Embedded'
+WHERE lower(j.title) LIKE '%embedded%'
+ON CONFLICT DO NOTHING;
+
+INSERT INTO clean.job_role_map (job_id, role_id)
+SELECT j.id, r.id
+FROM clean.jobs j
+JOIN clean.job_roles r ON r.name = 'BrSE'
+WHERE lower(j.title) LIKE '%brse%'
+   OR lower(j.title) LIKE '%bridge software engineer%'
+ON CONFLICT DO NOTHING;
+
+INSERT INTO clean.job_role_map (job_id, role_id)
+SELECT j.id, r.id
+FROM clean.jobs j
+JOIN clean.job_roles r ON r.name = 'Manager'
+WHERE lower(j.title) LIKE '%manager%'
+ON CONFLICT DO NOTHING;
+
+INSERT INTO clean.job_role_map (job_id, role_id)
+SELECT j.id, r.id
+FROM clean.jobs j
+JOIN clean.job_roles r ON r.name = 'Other'
+WHERE j.id NOT IN (
+    SELECT job_id FROM clean.job_role_map
+)
+ON CONFLICT DO NOTHING;
+-------------------------------------------------------------------------
+ALTER TABLE clean.job_level_map
+ADD CONSTRAINT job_level_unique UNIQUE (job_id, level_id);
+
+INSERT INTO clean.job_level_map (job_id, level_id)
+SELECT j.id, l.id
+FROM clean.jobs j
+JOIN clean.job_levels l ON l.name = 'Intern'
+WHERE j.title ILIKE '%intern%'
+ON CONFLICT DO NOTHING;
+
+INSERT INTO clean.job_level_map (job_id, level_id)
+SELECT j.id, l.id
+FROM clean.jobs j
+JOIN clean.job_levels l ON l.name = 'Fresher'
+WHERE j.title ILIKE '%fresher%'
+ON CONFLICT DO NOTHING;
+
+INSERT INTO clean.job_level_map (job_id, level_id)
+SELECT j.id, l.id
+FROM clean.jobs j
+JOIN clean.job_levels l ON l.name = 'Junior'
+WHERE
+    j.title ILIKE '%junior%'
+    OR j.title ILIKE '%jr%'
+ON CONFLICT DO NOTHING;
+
+INSERT INTO clean.job_level_map (job_id, level_id)
+SELECT j.id, l.id
+FROM clean.jobs j
+JOIN clean.job_levels l ON l.name = 'Middle'
+WHERE
+    j.title ILIKE '%middle%'
+    OR j.title ILIKE '%mid%'
+ON CONFLICT DO NOTHING;
+
+INSERT INTO clean.job_level_map (job_id, level_id)
+SELECT j.id, l.id
+FROM clean.jobs j
+JOIN clean.job_levels l ON l.name = 'Senior'
+WHERE
+    j.title ILIKE '%senior%'
+    OR j.title ILIKE '%sr%'
+ON CONFLICT DO NOTHING;
+
+INSERT INTO clean.job_level_map (job_id, level_id)
+SELECT j.id, l.id
+FROM clean.jobs j
+JOIN clean.job_levels l ON l.name = 'Lead'
+WHERE
+    j.title ILIKE '%lead%'
+ON CONFLICT DO NOTHING;
+
+INSERT INTO clean.job_level_map (job_id, level_id)
+SELECT j.id, l.id
+FROM clean.jobs j
+JOIN clean.job_levels l ON l.name = 'Other'
+WHERE NOT EXISTS (
+    SELECT 1
+    FROM clean.job_level_map m
+    WHERE m.job_id = j.id
+);
