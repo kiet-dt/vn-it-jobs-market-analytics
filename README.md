@@ -43,8 +43,12 @@ vn-it-jobs-market-analytics/
 │   └── 06_insert_job_level_map.sql
 ├── dashboards/                  # Power BI dashboard
 │   └── itviec.png               # Dashboard screenshot
+├── images/                      # Diagrams for README
+│   ├── architecture.png
+│   └── erd.png
+├── jars/                        # Kafka & JDBC JARs for Spark (copy into containers)
 ├── spark_stream.py              # Spark Structured Streaming job (Kafka → PostgreSQL)
-├── docker-compose.yaml          # Kafka, Zookeeper, Schema Registry, Control Center, Spark
+├── docker-compose.yaml         # Kafka, Zookeeper, Schema Registry, Control Center, Spark
 ├── Dockerfile                   # Spark image with Python deps
 └── requirements.txt             # kafka-python, scrapy, pyspark
 ```
@@ -121,19 +125,17 @@ Create the database (e.g. `jobdb`) and run the SQL scripts in `sql/` **in order*
 | 5 | `05_insert_job_role_map.sql` | Populate job–role mapping from job titles |
 | 6 | `06_insert_job_level_map.sql` | Populate job–level mapping from job titles |
 
-Example (from project root):
+Example (from project root). For **PostgreSQL on your machine** use `-h localhost`; if PostgreSQL runs in Docker and you run `psql` from the host, use `-h host.docker.internal`:
 
 ```bash
-psql -h host -U postgres -d jobdb -f sql/01_create_staging.sql
-psql -h host -U postgres -d jobdb -f sql/02_create_clean.sql
+psql -h localhost -U postgres -d jobdb -f sql/01_create_staging.sql
+psql -h localhost -U postgres -d jobdb -f sql/02_create_clean.sql
 # After staging has data:
-psql -h host -U postgres -d jobdb -f sql/03_insert_staging_to_clean.sql
-psql -h host -U postgres -d jobdb -f sql/04_insert_lookup_levels_roles.sql
-psql -h host -U postgres -d jobdb -f sql/05_insert_job_role_map.sql
-psql -h host -U postgres -d jobdb -f sql/06_insert_job_level_map.sql
+psql -h localhost -U postgres -d jobdb -f sql/03_insert_staging_to_clean.sql
+psql -h localhost -U postgres -d jobdb -f sql/04_insert_lookup_levels_roles.sql
+psql -h localhost -U postgres -d jobdb -f sql/05_insert_job_role_map.sql
+psql -h localhost -U postgres -d jobdb -f sql/06_insert_job_level_map.sql
 ```
-
-Replace `host` with your PostgreSQL host (e.g. `localhost` or `host.docker.internal`).
 
 ### 6. Open the Power BI report
 
@@ -141,7 +143,7 @@ After the database has data in the `clean` schema, open the Power BI report to e
 
 ![Dashboard](dashboards/itviec.png)
 
-To open the report in Power BI Desktop: use the `.pbix` file in `dashboards/` (if present), set the data source to your PostgreSQL instance (server e.g. `localhost`, database `jobdb`, schema `clean`). Use **Get data → PostgreSQL**, then select the tables from the `clean` schema.
+To open the report in Power BI Desktop: use the `.pbix` file in `dashboards/`, set the data source to your PostgreSQL instance (server e.g. `localhost`, database `jobdb`, schema `clean`). Use **Get data → PostgreSQL**, then select the tables from the `clean` schema.
 
 ## Database Schema
 
