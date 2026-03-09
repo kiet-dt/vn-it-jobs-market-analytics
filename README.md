@@ -8,6 +8,7 @@ A data pipeline for collecting, streaming, and analyzing IT job listings from th
 - **Streaming**: Job items are published to a Kafka topic and consumed by a Spark Structured Streaming job.
 - **Processing**: Spark parses JSON, normalizes skills against a predefined list, and writes to PostgreSQL staging tables (jobs, companies, skills, job_skills, locations, job_locations).
 - **Infrastructure**: Docker Compose runs Zookeeper, Kafka (Confluent), Schema Registry, Confluent Control Center, and a Spark cluster (master + worker).
+- **Reporting**: Power BI connects to the `clean` schema in PostgreSQL for dashboards and market analytics.
 
 ## Architecture
 
@@ -18,31 +19,34 @@ A data pipeline for collecting, streaming, and analyzing IT job listings from th
 - **Docker** and **Docker Compose**
 - **Python 3** (for running the Scrapy crawler locally)
 - **PostgreSQL** (for Spark to write staging data; default config points to `host.docker.internal:5432/jobdb`)
+- **Power BI Desktop** (optional, for opening and editing the report)
 
 ## Project Structure
 
 ```
 vn-it-jobs-market-analytics/
-├── crawler/                    # Scrapy project
+├── crawler/                     # Scrapy project
 │   └── crawler/
-│       ├── items.py            # JobItem definition
-│       ├── pipelines.py        # Kafka producer pipeline
+│       ├── items.py             # JobItem definition
+│       ├── pipelines.py         # Kafka producer pipeline
 │       ├── settings.py
 │       └── spiders/
 │           └── itviec_spider.py # ITViec spider
 ├── schemas/
-│   └── jobs_schema.py          # PySpark schema for job JSON
-├── sql/                        # PostgreSQL scripts (create tables, insert, mappings)
-│   ├── 01_create_staging.sql  # Staging schema + tables
-│   ├── 02_create_clean.sql    # Clean schema + tables
+│   └── jobs_schema.py           # PySpark schema for job JSON
+├── sql/                         # PostgreSQL scripts (create tables, insert, mappings)
+│   ├── 01_create_staging.sql    # Staging schema + tables
+│   ├── 02_create_clean.sql      # Clean schema + tables
 │   ├── 03_insert_staging_to_clean.sql
 │   ├── 04_insert_lookup_levels_roles.sql
 │   ├── 05_insert_job_role_map.sql
 │   └── 06_insert_job_level_map.sql
-├── spark_stream.py             # Spark Structured Streaming job (Kafka → PostgreSQL)
-├── docker-compose.yaml        # Kafka, Zookeeper, Schema Registry, Control Center, Spark
-├── Dockerfile                 # Spark image with Python deps
-└── requirements.txt           # kafka-python, scrapy, pyspark
+├── dashboards/                  # Power BI dashboard
+│   └── itviec.png               # Dashboard screenshot
+├── spark_stream.py              # Spark Structured Streaming job (Kafka → PostgreSQL)
+├── docker-compose.yaml          # Kafka, Zookeeper, Schema Registry, Control Center, Spark
+├── Dockerfile                   # Spark image with Python deps
+└── requirements.txt             # kafka-python, scrapy, pyspark
 ```
 
 ## Quick Start
@@ -131,6 +135,14 @@ psql -h host -U postgres -d jobdb -f sql/06_insert_job_level_map.sql
 
 Replace `host` with your PostgreSQL host (e.g. `localhost` or `host.docker.internal`).
 
+### 6. Open the Power BI report
+
+After the database has data in the `clean` schema, open the Power BI report to explore dashboards. Preview:
+
+![Dashboard](dashboards/itviec.png)
+
+To open the report in Power BI Desktop: use the `.pbix` file in `dashboards/` (if present), set the data source to your PostgreSQL instance (server e.g. `localhost`, database `jobdb`, schema `clean`). Use **Get data → PostgreSQL**, then select the tables from the `clean` schema.
+
 ## Database Schema
 
 ![Database ERD](images/erd.png)
@@ -148,6 +160,7 @@ Replace `host` with your PostgreSQL host (e.g. `localhost` or `host.docker.inter
 | Crawling   | Scrapy 2.11       |
 | Messaging  | Apache Kafka      |
 | Processing | PySpark 3.4 (Structured Streaming) |
-| Storage    | PostgreSQL (staging) |
+| Storage    | PostgreSQL (staging + clean) |
+| Reporting  | Power BI                    |
 | Runtime    | Docker, Confluent platform, Apache Spark |
 
